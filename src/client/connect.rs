@@ -4,6 +4,8 @@ use std::io;
 use std::mem;
 use std::sync::Arc;
 use std::time::Duration;
+use std::net::{SocketAddr, IpAddr};
+use net2::TcpBuilder;
 
 use futures::{Future, Poll, Async};
 use futures::future::{Executor, ExecuteError};
@@ -11,7 +13,7 @@ use futures::sync::oneshot;
 use futures_cpupool::{Builder as CpuPoolBuilder};
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio::reactor::Handle;
-use tokio::net::{TcpStream, TcpStreamNew};
+use tokio::net::TcpStream;
 use tokio_service::Service;
 use Uri;
 
@@ -51,6 +53,7 @@ pub struct HttpConnector {
     enforce_http: bool,
     handle: Handle,
     keep_alive_timeout: Option<Duration>,
+    local_address: Option<IpAddr>,
 }
 
 impl HttpConnector {
@@ -78,6 +81,7 @@ impl HttpConnector {
             enforce_http: true,
             handle: handle.clone(),
             keep_alive_timeout: None,
+            local_address: None,
         }
     }
 
@@ -97,6 +101,16 @@ impl HttpConnector {
     #[inline]
     pub fn set_keepalive(&mut self, dur: Option<Duration>) {
         self.keep_alive_timeout = dur;
+    }
+
+    /// Set that all sockets are optionally bound to the configured address.
+    ///
+    /// If `None`, the option will not be set.
+    ///
+    /// Default is `None`.
+    #[inline]
+    pub fn set_local_address(&mut self, addr: Option<IpAddr>) {
+        self.local_address = addr;
     }
 }
 
@@ -138,7 +152,7 @@ impl Service for HttpConnector {
         };
 
         HttpConnecting {
-            state: State::Lazy(self.executor.clone(), host.into(), port),
+            state: State::Lazy(self.executor.clone(), host.into(), port, self.local_address),
             handle: self.handle.clone(),
             keep_alive_timeout: self.keep_alive_timeout,
         }
@@ -186,8 +200,8 @@ pub struct HttpConnecting {
 }
 
 enum State {
-    Lazy(HttpConnectExecutor, String, u16),
-    Resolving(oneshot::SpawnHandle<dns::IpAddrs, io::Error>),
+    Lazy(HttpConnectExecutor, String, u16, Option<IpAddr>),
+    Resolving(oneshot::SpawnHandle<dns::IpAddrs, io::Error>, Option<IpAddr>),
     Connecting(ConnectingTcp),
     Error(Option<io::Error>),
 }
@@ -200,25 +214,27 @@ impl Future for HttpConnecting {
         loop {
             let state;
             match self.state {
-                State::Lazy(ref executor, ref mut host, port) => {
+                State::Lazy(ref executor, ref mut host, port, local_address) => {
                     // If the host is already an IP addr (v4 or v6),
                     // skip resolving the dns and start connecting right away.
                     if let Some(addrs) = dns::IpAddrs::try_parse(host, port) {
                         state = State::Connecting(ConnectingTcp {
+                            local_address: local_address,
                             addrs: addrs,
                             current: None
                         })
                     } else {
                         let host = mem::replace(host, String::new());
                         let work = dns::Work::new(host, port);
-                        state = State::Resolving(oneshot::spawn(work, executor));
+                        state = State::Resolving(oneshot::spawn(work, executor), local_address);
                     }
                 },
-                State::Resolving(ref mut future) => {
+                State::Resolving(ref mut future, local_address) => {
                     match try!(future.poll()) {
                         Async::NotReady => return Ok(Async::NotReady),
                         Async::Ready(addrs) => {
                             state = State::Connecting(ConnectingTcp {
+                                local_address: local_address,
                                 addrs: addrs,
                                 current: None,
                             })
@@ -248,8 +264,28 @@ impl fmt::Debug for HttpConnecting {
 }
 
 struct ConnectingTcp {
+    local_address: Option<IpAddr>,
     addrs: dns::IpAddrs,
-    current: Option<TcpStreamNew>,
+    current: Option<Box<Future<Item=TcpStream, Error=io::Error>>>,
+}
+
+// Connect to the given TCP address, optionally binding the local address.
+fn tcp_connect(addr: &SocketAddr, local: &Option<IpAddr>, handle: &Handle) -> Result<Box<Future<Item=TcpStream, Error=io::Error> + Send>, io::Error> {
+    let do_bind = |local: &Option<IpAddr>| {
+        let sock = match addr {
+            &SocketAddr::V4(..) => TcpBuilder::new_v4(),
+            &SocketAddr::V6(..) => TcpBuilder::new_v6(),
+        }?;
+        match local {
+            &None => (), // missing special Windows knowledge
+            &Some(ref local_addr) => sock.bind(SocketAddr::new(local_addr.clone(), 0)).map(|_| ())?,
+        };
+        sock.to_tcp_stream()
+    };
+
+    do_bind(local).map(|tcp| {
+        TcpStream::connect_stream(tcp, addr, handle)
+    })
 }
 
 impl ConnectingTcp {
@@ -265,15 +301,32 @@ impl ConnectingTcp {
                         err = Some(e);
                         if let Some(addr) = self.addrs.next() {
                             debug!("connecting to {}", addr);
-                            *current = TcpStream::connect(&addr, handle);
-                            continue;
+                            match tcp_connect(&addr, &self.local_address, handle) {
+                                Ok(stream) => {
+                                    *current = stream;
+                                    continue;
+                                },
+                                Err(e) => {
+                                    err = Some(e)
+                                    // fall through and report error
+                                }
+                            }
                         }
                     }
                 }
             } else if let Some(addr) = self.addrs.next() {
                 debug!("connecting to {}", addr);
-                self.current = Some(TcpStream::connect(&addr, handle));
-                continue;
+                match tcp_connect(&addr, &self.local_address, handle) {
+                    Ok(stream) => {
+                        self.current = Some(stream);
+                        continue;
+                    },
+                    Err(e) => {
+                        err = Some(e)
+                        // fall through and report error
+                    }
+                };
+
             }
 
             return Err(err.take().expect("missing connect error"));
