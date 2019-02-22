@@ -301,6 +301,7 @@ impl ConnectingTcp {
     fn poll(&mut self, handle: &Handle) -> Poll<TcpStream, io::Error> {
         let mut err = None;
         loop {
+            println!("This is being hit.");
             let addrs = self.addrs.clone();
             if let Some(ref mut current) = self.current {
                 match current.poll() {
