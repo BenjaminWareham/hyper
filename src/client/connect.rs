@@ -1,19 +1,19 @@
+use net2::TcpBuilder;
 use std::error::Error as StdError;
 use std::fmt;
 use std::io;
 use std::mem;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
-use std::net::{SocketAddr, IpAddr};
-use net2::TcpBuilder;
 
-use futures::{Future, Poll, Async};
-use futures::future::{Executor, ExecuteError};
+use futures::future::{ExecuteError, Executor};
 use futures::sync::oneshot;
-use futures_cpupool::{Builder as CpuPoolBuilder};
-use tokio_io::{AsyncRead, AsyncWrite};
-use tokio::reactor::Handle;
+use futures::{Async, Future, Poll};
+use futures_cpupool::Builder as CpuPoolBuilder;
 use tokio::net::TcpStream;
+use tokio::reactor::Handle;
+use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_service::Service;
 use Uri;
 
@@ -24,19 +24,20 @@ use super::dns;
 /// This trait is not implemented directly, and only exists to make
 /// the intent clearer. A connector should implement `Service` with
 /// `Request=Uri` and `Response: Io` instead.
-pub trait Connect: Service<Request=Uri, Error=io::Error> + 'static {
+pub trait Connect: Service<Request = Uri, Error = io::Error> + 'static {
     /// The connected Io Stream.
     type Output: AsyncRead + AsyncWrite + 'static;
     /// A Future that will resolve to the connected Stream.
-    type Future: Future<Item=Self::Output, Error=io::Error> + 'static;
+    type Future: Future<Item = Self::Output, Error = io::Error> + 'static;
     /// Connect to a remote address.
     fn connect(&self, Uri) -> <Self as Connect>::Future;
 }
 
 impl<T> Connect for T
-where T: Service<Request=Uri, Error=io::Error> + 'static,
-      T::Response: AsyncRead + AsyncWrite,
-      T::Future: Future<Error=io::Error>,
+where
+    T: Service<Request = Uri, Error = io::Error> + 'static,
+    T::Response: AsyncRead + AsyncWrite,
+    T::Future: Future<Error = io::Error>,
 {
     type Output = T::Response;
     type Future = T::Future;
@@ -74,7 +75,8 @@ impl HttpConnector {
     /// Takes an executor to run blocking tasks on.
     #[inline]
     pub fn new_with_executor<E: 'static>(executor: E, handle: &Handle) -> HttpConnector
-        where E: Executor<HttpConnectorBlockingTask>
+    where
+        E: Executor<HttpConnectorBlockingTask>,
     {
         HttpConnector {
             executor: HttpConnectExecutor(Arc::new(executor)),
@@ -117,8 +119,7 @@ impl HttpConnector {
 impl fmt::Debug for HttpConnector {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("HttpConnector")
-            .finish()
+        f.debug_struct("HttpConnector").finish()
     }
 }
 
@@ -201,7 +202,10 @@ pub struct HttpConnecting {
 
 enum State {
     Lazy(HttpConnectExecutor, String, u16, Option<IpAddr>),
-    Resolving(oneshot::SpawnHandle<dns::IpAddrs, io::Error>, Option<IpAddr>),
+    Resolving(
+        oneshot::SpawnHandle<dns::IpAddrs, io::Error>,
+        Option<IpAddr>,
+    ),
     Connecting(ConnectingTcp),
     Error(Option<io::Error>),
 }
@@ -221,14 +225,14 @@ impl Future for HttpConnecting {
                         state = State::Connecting(ConnectingTcp {
                             local_address: local_address,
                             addrs: addrs,
-                            current: None
+                            current: None,
                         })
                     } else {
                         let host = mem::replace(host, String::new());
                         let work = dns::Work::new(host, port);
                         state = State::Resolving(oneshot::spawn(work, executor), local_address);
                     }
-                },
+                }
                 State::Resolving(ref mut future, local_address) => {
                     match try!(future.poll()) {
                         Async::NotReady => return Ok(Async::NotReady),
@@ -240,7 +244,7 @@ impl Future for HttpConnecting {
                             })
                         }
                     };
-                },
+                }
                 State::Connecting(ref mut c) => {
                     let sock = try_ready!(c.poll(&self.handle));
 
@@ -249,7 +253,7 @@ impl Future for HttpConnecting {
                     }
 
                     return Ok(Async::Ready(sock));
-                },
+                }
                 State::Error(ref mut e) => return Err(e.take().expect("polled more than once")),
             }
             self.state = state;
@@ -266,11 +270,15 @@ impl fmt::Debug for HttpConnecting {
 struct ConnectingTcp {
     local_address: Option<IpAddr>,
     addrs: dns::IpAddrs,
-    current: Option<Box<Future<Item=TcpStream, Error=io::Error>>>,
+    current: Option<Box<Future<Item = TcpStream, Error = io::Error>>>,
 }
 
 // Connect to the given TCP address, optionally binding the local address.
-fn tcp_connect(addr: &SocketAddr, local: &Option<IpAddr>, handle: &Handle) -> Result<Box<Future<Item=TcpStream, Error=io::Error> + Send>, io::Error> {
+fn tcp_connect(
+    addr: &SocketAddr,
+    local: &Option<IpAddr>,
+    handle: &Handle,
+) -> Result<Box<Future<Item = TcpStream, Error = io::Error> + Send>, io::Error> {
     let do_bind = |local: &Option<IpAddr>| {
         let sock = match addr {
             &SocketAddr::V4(..) => TcpBuilder::new_v4(),
@@ -278,14 +286,14 @@ fn tcp_connect(addr: &SocketAddr, local: &Option<IpAddr>, handle: &Handle) -> Re
         }?;
         match local {
             &None => (), // missing special Windows knowledge
-            &Some(ref local_addr) => sock.bind(SocketAddr::new(local_addr.clone(), 0)).map(|_| ())?,
+            &Some(ref local_addr) => sock
+                .bind(SocketAddr::new(local_addr.clone(), 0))
+                .map(|_| ())?,
         };
         sock.to_tcp_stream()
     };
 
-    do_bind(local).map(|tcp| {
-        TcpStream::connect_stream(tcp, addr, handle)
-    })
+    do_bind(local).map(|tcp| TcpStream::connect_stream(tcp, addr, handle))
 }
 
 impl ConnectingTcp {
@@ -293,19 +301,20 @@ impl ConnectingTcp {
     fn poll(&mut self, handle: &Handle) -> Poll<TcpStream, io::Error> {
         let mut err = None;
         loop {
+            let addrs = self.addrs.clone();
             if let Some(ref mut current) = self.current {
                 match current.poll() {
                     Ok(ok) => return Ok(ok),
                     Err(e) => {
                         trace!("connect error {:?}", e);
                         err = Some(e);
-                        if let Some(addr) = self.addrs.next() {
+                        if let Some(addr) = dns::IpAddrs::next_addr(addrs, self.local_address) {
                             debug!("connecting to {}", addr);
                             match tcp_connect(&addr, &self.local_address, handle) {
                                 Ok(stream) => {
                                     *current = stream;
                                     continue;
-                                },
+                                }
                                 Err(e) => {
                                     err = Some(e)
                                     // fall through and report error
@@ -314,19 +323,18 @@ impl ConnectingTcp {
                         }
                     }
                 }
-            } else if let Some(addr) = self.addrs.next() {
+            } else if let Some(addr) = dns::IpAddrs::next_addr(addrs, self.local_address) {
                 debug!("connecting to {}", addr);
                 match tcp_connect(&addr, &self.local_address, handle) {
                     Ok(stream) => {
                         self.current = Some(stream);
                         continue;
-                    },
+                    }
                     Err(e) => {
                         err = Some(e)
                         // fall through and report error
                     }
                 };
-
             }
 
             return Err(err.take().expect("missing connect error"));
@@ -336,7 +344,7 @@ impl ConnectingTcp {
 
 /// Blocking task to be executed on a thread pool.
 pub struct HttpConnectorBlockingTask {
-    work: oneshot::Execute<dns::Work>
+    work: oneshot::Execute<dns::Work>,
 }
 
 impl fmt::Debug for HttpConnectorBlockingTask {
@@ -358,17 +366,21 @@ impl Future for HttpConnectorBlockingTask {
 struct HttpConnectExecutor(Arc<Executor<HttpConnectorBlockingTask>>);
 
 impl Executor<oneshot::Execute<dns::Work>> for HttpConnectExecutor {
-    fn execute(&self, future: oneshot::Execute<dns::Work>) -> Result<(), ExecuteError<oneshot::Execute<dns::Work>>> {
-        self.0.execute(HttpConnectorBlockingTask { work: future })
+    fn execute(
+        &self,
+        future: oneshot::Execute<dns::Work>,
+    ) -> Result<(), ExecuteError<oneshot::Execute<dns::Work>>> {
+        self.0
+            .execute(HttpConnectorBlockingTask { work: future })
             .map_err(|err| ExecuteError::new(err.kind(), err.into_future().work))
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::{Connect, HttpConnector};
     use std::io;
     use tokio::reactor::Core;
-    use super::{Connect, HttpConnector};
 
     #[test]
     fn test_errors_missing_authority() {
@@ -376,7 +388,10 @@ mod tests {
         let url = "/foo/bar?baz".parse().unwrap();
         let connector = HttpConnector::new(1, &core.handle());
 
-        assert_eq!(core.run(connector.connect(url)).unwrap_err().kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(
+            core.run(connector.connect(url)).unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
     }
 
     #[test]
@@ -385,9 +400,11 @@ mod tests {
         let url = "https://example.domain/foo/bar?baz".parse().unwrap();
         let connector = HttpConnector::new(1, &core.handle());
 
-        assert_eq!(core.run(connector.connect(url)).unwrap_err().kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(
+            core.run(connector.connect(url)).unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
     }
-
 
     #[test]
     fn test_errors_missing_scheme() {
@@ -395,6 +412,9 @@ mod tests {
         let url = "example.domain".parse().unwrap();
         let connector = HttpConnector::new(1, &core.handle());
 
-        assert_eq!(core.run(connector.connect(url)).unwrap_err().kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(
+            core.run(connector.connect(url)).unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
     }
 }
