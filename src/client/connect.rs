@@ -307,7 +307,7 @@ impl ConnectingTcp {
                     Err(e) => {
                         trace!("connect error {:?}", e);
                         err = Some(e);
-                        if let Some(addr) = self.addrs.next_ipv4() {
+                        if let Some(addr) = self.addrs.next_filter(self.local_address) {
                             debug!("connecting to {}", addr);
                             match tcp_connect(&addr, &self.local_address, handle) {
                                 Ok(stream) => {
@@ -322,7 +322,7 @@ impl ConnectingTcp {
                         }
                     }
                 }
-            } else if let Some(addr) = self.addrs.next_ipv4() {
+            } else if let Some(addr) = self.addrs.next_filter(self.local_address) {
                 debug!("connecting to {}", addr);
                 match tcp_connect(&addr, &self.local_address, handle) {
                     Ok(stream) => {

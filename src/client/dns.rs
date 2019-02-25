@@ -1,4 +1,5 @@
 use std::io;
+use std::net::IpAddr;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs};
 use std::vec;
 
@@ -50,8 +51,12 @@ impl IpAddrs {
         }
         None
     }
-    pub fn next_ipv4(&mut self) -> Option<SocketAddr> {
-        self.iter.find(|addr| addr.is_ipv4())
+    pub fn next_filter(&mut self, local_addr: Option<IpAddr>) -> Option<SocketAddr> {
+        if let Some(ip_addr) = local_addr {
+            self.iter.find(|addr| addr.is_ipv4() == ip_addr.is_ipv4())
+        } else {
+            self.iter.next()
+        }
     }
 }
 
