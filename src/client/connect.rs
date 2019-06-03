@@ -315,7 +315,7 @@ impl ConnectingTcp {
                                     continue;
                                 }
                                 Err(e) => {
-                                    // SFR 528468 - retry once on retrieval failure 
+                                    // SFR 528468 - retry once on retrieval failure
                                     err = Some(e);
                                     if let Some(addr) = self.addrs.next_filter(self.local_address) {
                                         debug!("connecting to {}", addr);
@@ -343,7 +343,7 @@ impl ConnectingTcp {
                         continue;
                     }
                     Err(e) => {
-                        // SFR 528468 - retry once on retrieval failure 
+                        // SFR 528468 - retry once on retrieval failure
                         err = Some(e);
                         if let Some(addr) = self.addrs.next_filter(self.local_address) {
                             debug!("connecting to {}", addr);
