@@ -315,8 +315,21 @@ impl ConnectingTcp {
                                     continue;
                                 }
                                 Err(e) => {
-                                    err = Some(e)
-                                    // fall through and report error
+                                    // SFR 528468 - retry once on retrieval failure 
+                                    err = Some(e);
+                                    if let Some(addr) = self.addrs.next_filter(self.local_address) {
+                                        debug!("connecting to {}", addr);
+                                        match tcp_connect(&addr, &self.local_address, handle) {
+                                            Ok(stream) => {
+                                                *current = stream;
+                                                continue;
+                                            }
+                                            Err(e) => {
+                                                err = Some(e)
+                                                // fall through and report error
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -330,8 +343,21 @@ impl ConnectingTcp {
                         continue;
                     }
                     Err(e) => {
-                        err = Some(e)
-                        // fall through and report error
+                        // SFR 528468 - retry once on retrieval failure 
+                        err = Some(e);
+                        if let Some(addr) = self.addrs.next_filter(self.local_address) {
+                            debug!("connecting to {}", addr);
+                            match tcp_connect(&addr, &self.local_address, handle) {
+                                Ok(stream) => {
+                                    self.current = Some(stream);
+                                    continue;
+                                }
+                                Err(e) => {
+                                    err = Some(e)
+                                    // fall through and report error
+                                }
+                            }
+                        }
                     }
                 };
             }
