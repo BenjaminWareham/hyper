@@ -317,9 +317,9 @@ impl ConnectingTcp {
                                 Err(e) => {
                                     // SFR 528468 - retry once on retrieval failure
                                     err = Some(e);
-                                    if let Some(addr) = self.addrs.next_filter(self.local_address) {
-                                        debug!("connecting to {}", addr);
-                                        match tcp_connect(&addr, &self.local_address, handle) {
+                                    if let Some(addr2) = self.addrs.next_filter(self.local_address) {
+                                        debug!("connecting to {}", addr2);
+                                        match tcp_connect(&addr2, &self.local_address, handle) {
                                             Ok(stream) => {
                                                 *current = stream;
                                                 continue;
@@ -345,9 +345,9 @@ impl ConnectingTcp {
                     Err(e) => {
                         // SFR 528468 - retry once on retrieval failure
                         err = Some(e);
-                        if let Some(addr) = self.addrs.next_filter(self.local_address) {
-                            debug!("connecting to {}", addr);
-                            match tcp_connect(&addr, &self.local_address, handle) {
+                        if let Some(addr2) = self.addrs.next_filter(self.local_address) {
+                            debug!("connecting to {}", addr2);
+                            match tcp_connect(&addr2, &self.local_address, handle) {
                                 Ok(stream) => {
                                     self.current = Some(stream);
                                     continue;
