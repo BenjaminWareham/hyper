@@ -302,6 +302,7 @@ impl ConnectingTcp {
         let mut err = None;
         loop {
             if let Some(ref mut current) = self.current {
+                debug!("if section of poll");
                 match current.poll() {
                     Ok(ok) => return Ok(ok),
                     Err(e) => {
@@ -322,7 +323,8 @@ impl ConnectingTcp {
                                     break;
                                 }
                                 Err(e) => {
-                                    err = Some(e)
+                                    err = Some(e);
+                                    debug!("hit an error connecting to {}: {:?}", addr, err)
                                     // fall through and report error
                                 }
                             }
@@ -331,6 +333,7 @@ impl ConnectingTcp {
                 }
             } else {
                 // SFR 528468 - Try all returned records
+                debug!("else section of poll");
                 for addr in self.addrs.clone() {
                     // SFR 529157 - match local to remote IP version
                     if let Some(local_addr) = self.local_address {
@@ -345,7 +348,8 @@ impl ConnectingTcp {
                             break;
                         }
                         Err(e) => {
-                            err = Some(e)
+                            err = Some(e);
+                            debug!("hit an error connecting to {}: {:?}", addr, err)
                             // fall through and report error
                         }
                     };
