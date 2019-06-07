@@ -31,6 +31,7 @@ impl Future for Work {
     }
 }
 
+#[derive(Clone)]
 pub struct IpAddrs {
     iter: vec::IntoIter<SocketAddr>,
 }

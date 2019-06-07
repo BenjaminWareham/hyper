@@ -307,49 +307,18 @@ impl ConnectingTcp {
                     Err(e) => {
                         trace!("connect error {:?}", e);
                         err = Some(e);
-                        if let Some(addr) = self.addrs.next_filter(self.local_address) {
+                        // SFR 528468 - Try all returned records
+                        for addr in self.addrs.clone() {
+                            // SFR 529157 - match local to remote IP version
+                            if let Some(local_addr) = self.local_address {
+                                if addr.is_ipv4() != local_addr.is_ipv4() {
+                                    continue;
+                                }
+                            }
                             debug!("connecting to {}", addr);
                             match tcp_connect(&addr, &self.local_address, handle) {
                                 Ok(stream) => {
                                     *current = stream;
-                                    continue;
-                                }
-                                Err(e) => {
-                                    // SFR 528468 - retry once on retrieval failure
-                                    err = Some(e);
-                                    if let Some(addr2) = self.addrs.next_filter(self.local_address) {
-                                        debug!("connecting to {}", addr2);
-                                        match tcp_connect(&addr2, &self.local_address, handle) {
-                                            Ok(stream) => {
-                                                *current = stream;
-                                                continue;
-                                            }
-                                            Err(e) => {
-                                                err = Some(e)
-                                                // fall through and report error
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            } else if let Some(addr) = self.addrs.next_filter(self.local_address) {
-                debug!("connecting to {}", addr);
-                match tcp_connect(&addr, &self.local_address, handle) {
-                    Ok(stream) => {
-                        self.current = Some(stream);
-                        continue;
-                    }
-                    Err(e) => {
-                        // SFR 528468 - retry once on retrieval failure
-                        err = Some(e);
-                        if let Some(addr2) = self.addrs.next_filter(self.local_address) {
-                            debug!("connecting to {}", addr2);
-                            match tcp_connect(&addr2, &self.local_address, handle) {
-                                Ok(stream) => {
-                                    self.current = Some(stream);
                                     continue;
                                 }
                                 Err(e) => {
@@ -359,7 +328,28 @@ impl ConnectingTcp {
                             }
                         }
                     }
-                };
+                }
+            } else {
+                // SFR 528468 - Try all returned records
+                for addr in self.addrs.clone() {
+                    // SFR 529157 - match local to remote IP version
+                    if let Some(local_addr) = self.local_address {
+                        if addr.is_ipv4() != local_addr.is_ipv4() {
+                            continue;
+                        }
+                    }
+                    debug!("connecting to {}", addr);
+                    match tcp_connect(&addr, &self.local_address, handle) {
+                        Ok(stream) => {
+                            self.current = Some(stream);
+                            continue;
+                        }
+                        Err(e) => {
+                            err = Some(e)
+                            // fall through and report error
+                        }
+                    };
+                }
             }
 
             return Err(err.take().expect("missing connect error"));
