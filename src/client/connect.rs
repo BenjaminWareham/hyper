@@ -326,8 +326,7 @@ impl ConnectingTcp {
                                     // fall through and report error
                                 }
                             }
-                        };
-                        continue;
+                        }
                     }
                 }
             } else {
@@ -350,7 +349,6 @@ impl ConnectingTcp {
                             // fall through and report error
                         }
                     };
-                    continue;
                 }
             }
 
