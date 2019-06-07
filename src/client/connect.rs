@@ -319,14 +319,15 @@ impl ConnectingTcp {
                             match tcp_connect(&addr, &self.local_address, handle) {
                                 Ok(stream) => {
                                     *current = stream;
-                                    continue;
+                                    break;
                                 }
                                 Err(e) => {
                                     err = Some(e)
                                     // fall through and report error
                                 }
                             }
-                        }
+                        };
+                        continue;
                     }
                 }
             } else {
@@ -342,13 +343,14 @@ impl ConnectingTcp {
                     match tcp_connect(&addr, &self.local_address, handle) {
                         Ok(stream) => {
                             self.current = Some(stream);
-                            continue;
+                            break;
                         }
                         Err(e) => {
                             err = Some(e)
                             // fall through and report error
                         }
                     };
+                    continue;
                 }
             }
 
