@@ -345,8 +345,7 @@ impl ConnectingTcp {
                     match tcp_connect(&addr, &self.local_address, handle) {
                         Ok(stream) => {
                             self.current = Some(stream);
-                            err = Some("");
-                            continue;
+                            break;
                         }
                         Err(e) => {
                             err = Some(e);
