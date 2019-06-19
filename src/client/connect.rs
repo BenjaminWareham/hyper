@@ -333,7 +333,7 @@ impl ConnectingTcp {
                 }
             } else {
                 // SFR 528468 - Try all returned records
-                debug!("else section of poll");
+                println!("else section of poll");
                 for addr in self.addrs.clone() {
                     // SFR 529157 - match local to remote IP version
                     if let Some(local_addr) = self.local_address {
