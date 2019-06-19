@@ -300,7 +300,7 @@ impl ConnectingTcp {
     // not a Future, since passing a &Handle to poll
     fn poll(&mut self, handle: &Handle) -> Poll<TcpStream, io::Error> {
         let mut err = None;
-        loop {
+        'outer: loop {
             if let Some(ref mut current) = self.current {
                 debug!("if section of poll");
                 match current.poll() {
@@ -320,7 +320,7 @@ impl ConnectingTcp {
                             match tcp_connect(&addr, &self.local_address, handle) {
                                 Ok(stream) => {
                                     *current = stream;
-                                    break;
+                                    continue 'outer;
                                 }
                                 Err(e) => {
                                     err = Some(e);
@@ -345,7 +345,7 @@ impl ConnectingTcp {
                     match tcp_connect(&addr, &self.local_address, handle) {
                         Ok(stream) => {
                             self.current = Some(stream);
-                            break;
+                            continue 'outer;
                         }
                         Err(e) => {
                             err = Some(e);
