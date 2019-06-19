@@ -301,6 +301,7 @@ impl ConnectingTcp {
     fn poll(&mut self, handle: &Handle) -> Poll<TcpStream, io::Error> {
         let mut err = None;
         loop {
+            debug!("resolved addresses: {:?}", self.addrs);
             if let Some(ref mut current) = self.current {
                 match current.poll() {
                     Ok(ok) => return Ok(ok),
@@ -311,15 +312,18 @@ impl ConnectingTcp {
                             debug!("connecting to {}", addr);
                             match tcp_connect(&addr, &self.local_address, handle) {
                                 Ok(stream) => {
+                                    debug!("connected to stream for {}", addr);
                                     *current = stream;
                                     continue;
                                 }
                                 Err(e) => {
                                     err = Some(e);
+                                    debug!("failed to connect to {}, error: {:?}", addr, err);
                                     if let Some(addr) = self.addrs.next_filter(self.local_address) {
                                         debug!("connecting to {}", addr);
                                         match tcp_connect(&addr, &self.local_address, handle) {
                                             Ok(stream) => {
+                                                debug!("connected to stream for {}", addr);
                                                 *current = stream;
                                                 continue;
                                             }
@@ -338,15 +342,18 @@ impl ConnectingTcp {
                 debug!("connecting to {}", addr);
                 match tcp_connect(&addr, &self.local_address, handle) {
                     Ok(stream) => {
+                        debug!("connected to stream for {}", addr);
                         self.current = Some(stream);
                         continue;
                     }
                     Err(e) => {
                         err = Some(e);
+                        debug!("failed to connect to {}, error: {:?}", addr, err);
                         if let Some(addr) = self.addrs.next_filter(self.local_address) {
                             debug!("connecting to {}", addr);
                             match tcp_connect(&addr, &self.local_address, handle) {
                                 Ok(stream) => {
+                                    debug!("connected to stream for {}", addr);
                                     self.current = Some(stream);
                                     continue;
                                 }

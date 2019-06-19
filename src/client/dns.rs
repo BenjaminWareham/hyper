@@ -30,7 +30,7 @@ impl Future for Work {
             .map(|i| Async::Ready(IpAddrs { iter: i }))
     }
 }
-
+#[derive(Debug)]
 pub struct IpAddrs {
     iter: vec::IntoIter<SocketAddr>,
 }
